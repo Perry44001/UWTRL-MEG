@@ -95,18 +95,6 @@ python train_mtl.py --num_epoch 150 --train_list_path train_list.txt --test_list
 - `--lr`：初始学习率，默认0.001。
 - `--weight-decay`：权重衰减系数，默认5e-4。
 
-训练代码可以指定输入.wav的特征，比如mel, welch, avg, gfcc, stft, cqt，在使用meg_mix作为网络时，可以使用混合输入。
-
-网络可以从['meg', 'mcl', 'meg_blc', 'meg_mix', 'resnet18', 'resnet50', 'convnext', 'vgg16', 'vgg19', 'mobilenetv2', 'densenet121', 'swin']中选择
-
-网络可以如下分类
-- 我们的网络
-  - mcl 不加混合专家模型的原始多任务分类识别网络
-  - meg 加入混合专家模型的多任务、多专家、多门网络
-  - meg_blc 在meg的基础上加入了负载均衡损失
-  - meg_mix 不同特征 (如输入stft gfcc) 作为输入的混合专家网络
-- 剩下的为常规网络
-
 ## 六、模型评估
 1. 训练过程中，模型会在每个训练轮次结束后自动进行评估，并输出测试准确率、混淆矩阵、测试损失等指标。
 2. 若只需进行评估，可在训练命令中添加`--evaluate`参数：
@@ -118,21 +106,7 @@ python train_mtl.py --evaluate --test_list_path [测试数据列表路径] --lab
 
 ## 八、代码示例
 ### 1. 音频特征提取
-特征维度参数说明：
-| 特征类型 | 滤波器组数量 | 特征维度         |
-|----------|--------------|------------------|
-| Mel      | 200          | [1, 200, 301]    |
-| STFT     | -            | [1, 513, 301]    |
-| MFCC     | 40           | [1, 40, 301]     |
-| GFCC     | 200          | [1, 200, 301]    |
-| CQT      | 84           | [1, 84, 301]     |
-
-时间轴计算：
 ```python
-# 3秒音频总样本数 = 16000 * 3 = 48000
-# hop_length=160, win_length=400
-时间步数 = (48000 - 400) // 160 + 1 = 301
-```
 from md_moe_rl import load_audio
 
 audio_path = "example_audio.wav"

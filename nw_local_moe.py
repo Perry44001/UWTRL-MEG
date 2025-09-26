@@ -19,12 +19,37 @@ from torch.autograd import Variable
 # 导入 PyTorch 的参数模块
 from torch.nn import Parameter
 
-# 定义基本块类，继承自 PyTorch 的 nn.Module
+def load_balancing_loss(router_logits, num_experts):
+    """
+    计算负载均衡损失
+    
+    Args:
+        router_logits: 路由器的输出logits
+        num_experts: 专家数量
+    
+    Returns:
+        float: 负载均衡损失
+    """
+    # 计算每个专家的平均使用率
+    router_probs = F.softmax(router_logits, dim=-1)
+    mean_usage = router_probs.mean(dim=0)
+    
+    # 计算使用率的熵
+    entropy = -torch.sum(mean_usage * torch.log(mean_usage + 1e-10))
+    
+    # 计算使用率的方差
+    variance = torch.sum((mean_usage - 1.0/num_experts) ** 2)
+    
+    # 组合熵和方差作为负载均衡损失
+    balance_loss = variance + 0.1 * entropy
+    
+    return balance_loss
+
 class BasicBlock(nn.Module):
     # 定义扩张因子，用于残差连接时通道数的调整
     expansion = 1
 
-    def __init__(self, channels, kernel_size=1, stride=1, padding=0, dilation=1, bias=False):
+    def __init__(self, channels, kernel_size=1, stride=1, padding=0, dilation=1, bias=False, model_name='meg'):
         """
         初始化 BasicBlock 类。
 
@@ -57,6 +82,13 @@ class BasicBlock(nn.Module):
                 # 批量归一化层
                 nn.BatchNorm1d(self.expansion * channels)
             )
+        
+        if model_name == 'meg_blc':
+            # Xavier初始化
+            nn.init.xavier_uniform_(self.conv1.weight)
+            nn.init.xavier_uniform_(self.conv2.weight)
+            if len(self.shortcut) > 0:
+                nn.init.xavier_uniform_(self.shortcut[0].weight)
 
     def forward(self, x):
         """
@@ -80,7 +112,7 @@ class BasicBlock(nn.Module):
 
 # 定义 SE 层类，继承自 PyTorch 的 nn.Module
 class SELayer(nn.Module):
-    def __init__(self, channel, reduction=16):
+    def __init__(self, channel, reduction=16, model_name='meg'):
         """
         初始化 SELayer 类。
 
@@ -103,6 +135,10 @@ class SELayer(nn.Module):
             # Sigmoid 激活函数
             nn.Sigmoid()
         )
+        if model_name == 'meg_blc': 
+            # Xavier初始化
+            nn.init.xavier_uniform_(self.fc[0].weight)
+            nn.init.xavier_uniform_(self.fc[2].weight)
 
     def forward(self, x):
         """
@@ -127,7 +163,7 @@ class SELayer(nn.Module):
 class Conv1dBnRelu_jy(nn.Module):
     # 注释说明输入和输出的张量形状
     # in:torch.Size([64, 80, 501]); out:torch.Size([64, 512, 501])
-    def __init__(self, in_channels, out_channels, kernel_size=1, stride=1, padding=0, dilation=1, bias=False):
+    def __init__(self, in_channels, out_channels, kernel_size=1, stride=1, padding=0, dilation=1, bias=False, model_name='meg'):
         """
         初始化 Conv1dBnRelu_jy 类。
 
@@ -146,6 +182,10 @@ class Conv1dBnRelu_jy(nn.Module):
         self.conv = nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding, dilation, bias=bias)
         # 定义一维批量归一化层
         self.bn = nn.BatchNorm1d(out_channels)
+        
+        if model_name == 'meg_blc':
+            # Xavier初始化
+            nn.init.xavier_uniform_(self.conv.weight)
 
     def forward(self, x):
         """
@@ -161,7 +201,7 @@ class Conv1dBnRelu_jy(nn.Module):
         return F.relu(self.bn(self.conv(x)))
 
 # 定义 SE 基本块函数，返回一个包含多个层的序列
-def SE_BasicBlock_jy(channels, kernel_size, stride, padding, dilation):
+def SE_BasicBlock_jy(channels, kernel_size, stride, padding, dilation, model_name='meg'):
     """
     创建一个包含卷积、基本块、卷积和 SE 层的序列。
 
@@ -188,7 +228,7 @@ def SE_BasicBlock_jy(channels, kernel_size, stride, padding, dilation):
 
 # 定义注意力统计池化层类
 class AttentiveStatsPool_ori(nn.Module):
-    def __init__(self, in_dim, bottleneck_dim):
+    def __init__(self, in_dim, bottleneck_dim, model_name='meg'):
         """
         初始化 AttentiveStatsPool_ori 类。
 
@@ -202,6 +242,11 @@ class AttentiveStatsPool_ori(nn.Module):
         self.linear1 = nn.Conv1d(in_dim, bottleneck_dim, kernel_size=1)
         # 定义第二个一维卷积层，相当于论文中的 V 和 k
         self.linear2 = nn.Conv1d(bottleneck_dim, in_dim, kernel_size=1)
+        
+        if model_name == 'meg_blc':
+            # Xavier初始化
+            nn.init.xavier_uniform_(self.linear1.weight)
+            nn.init.xavier_uniform_(self.linear2.weight)
 
     def forward(self, x):
         """
@@ -228,7 +273,7 @@ class AttentiveStatsPool_ori(nn.Module):
 
 # 定义局部头部类
 class local_head(nn.Module):
-    def __init__(self, input_size=80, channels=512, embd_dim=192):
+    def __init__(self, input_size=80, channels=512, embd_dim=192, model_name='meg'):
         """
         初始化 local_head 类。
 
@@ -265,6 +310,12 @@ class local_head(nn.Module):
         self.linear_z = nn.Linear(out_channels, embd_dim)
         # 定义第三个批量归一化层
         self.bn2_z = nn.BatchNorm1d(embd_dim)
+        
+        if model_name == 'meg_blc':
+            # Xavier初始化
+            nn.init.xavier_uniform_(self.conv.weight)
+            nn.init.xavier_uniform_(self.linear_r.weight)
+            nn.init.xavier_uniform_(self.linear_z.weight)
 
     def forward(self, x):
         """
@@ -298,7 +349,7 @@ class local_head(nn.Module):
 
 # 定义局部网络类
 class local_network(nn.Module):
-    def __init__(self, input_size=80, channels=512, embd_dim=192, num_experts=5, k=3):
+    def __init__(self, input_size=80, channels=512, embd_dim=192, num_experts=5, k=3, model_name='meg'):
         """
         初始化 local_network 类。
 
@@ -313,20 +364,35 @@ class local_network(nn.Module):
         super().__init__()
         # 初始化局部头部
         self.local_head = local_head(input_size, channels, embd_dim)
-        # 专家网络的数量
-        self.num_experts = num_experts
-        # 选择的前 k 个专家网络的数量
-        self.k = k
-        # 专家网络
-        # 定义一个模块列表，包含 num_experts 个全连接层，输入特征数为 embd_dim，输出特征数为 1
-        self.experts_r = nn.ModuleList([nn.Linear(embd_dim, 1) for _ in range(num_experts)])
-        # 定义一个模块列表，包含 num_experts 个全连接层，输入特征数为 embd_dim，输出特征数为 1
-        self.experts_z = nn.ModuleList([nn.Linear(embd_dim, 1) for _ in range(num_experts)])
-        # 门控网络
-        # 定义一个全连接层，输入特征数为 embd_dim，输出特征数为 num_experts
-        self.gate_r = nn.Linear(embd_dim, num_experts)
-        # 定义一个全连接层，输入特征数为 embd_dim，输出特征数为 num_experts
-        self.gate_z = nn.Linear(embd_dim, num_experts)
+        self.fc2r = nn.Linear(embd_dim, 1)
+        self.fc2z = nn.Linear(embd_dim, 1)
+        self.model_name = model_name
+
+        if model_name != 'mcl':
+            # 专家网络的数量
+            self.num_experts = num_experts
+            # 选择的前 k 个专家网络的数量
+            self.k = k
+            # 专家网络
+            # 定义一个模块列表，包含 num_experts 个全连接层，输入特征数为 embd_dim，输出特征数为 1
+            self.experts_r = nn.ModuleList([nn.Linear(embd_dim, 1) for _ in range(num_experts)])
+            # 定义一个模块列表，包含 num_experts 个全连接层，输入特征数为 embd_dim，输出特征数为 1
+            self.experts_z = nn.ModuleList([nn.Linear(embd_dim, 1) for _ in range(num_experts)])
+            # 门控网络
+            # 定义一个全连接层，输入特征数为 embd_dim，输出特征数为 num_experts
+            self.gate_r = nn.Linear(embd_dim, num_experts)
+            # 定义一个全连接层，输入特征数为 embd_dim，输出特征数为 num_experts
+            self.gate_z = nn.Linear(embd_dim, num_experts)
+
+            
+            if model_name == 'meg_blc':
+                # Xavier初始化
+                for expert in self.experts_r:
+                    nn.init.xavier_uniform_(expert.weight)
+                for expert in self.experts_z:
+                    nn.init.xavier_uniform_(expert.weight)
+                nn.init.xavier_uniform_(self.gate_r.weight)
+                nn.init.xavier_uniform_(self.gate_z.weight)
 
     def forward(self, x):
         """
@@ -338,59 +404,221 @@ class local_network(nn.Module):
         返回:
         tuple: 包含两个输出张量的元组。
         """
-        # 通过局部头部
-        out_r, out_z = self.local_head(x)
-        # 计算门控权重
-        # 通过门控网络并使用 softmax 函数计算权重
-        gate_weights_r = F.softmax(self.gate_r(out_r), dim=-1)
-        # 通过门控网络并使用 softmax 函数计算权重
-        gate_weights_z = F.softmax(self.gate_z(out_z), dim=-1)
-        # Top-K 选择
-        # 选择门控权重中前 k 大的索引
-        topk_indices_r = torch.topk(gate_weights_r, self.k, dim=-1).indices
-        # 选择门控权重中前 k 大的索引
-        topk_indices_z = torch.topk(gate_weights_z, self.k, dim=-1).indices
-        # 专家网络输出
-        # 计算每个专家网络的输出
-        expert_outputs_r = [expert(out_r) for expert in self.experts_r]
-        # 计算每个专家网络的输出
-        expert_outputs_z = [expert(out_z) for expert in self.experts_z]
-        # 组合专家输出
-        # 初始化最终输出为 0
-        final_output_r = 0
-        # 初始化最终输出为 0
-        final_output_z = 0
-        # 遍历前 k 个专家网络的索引
-        for i in range(self.k):
-            # 扩展索引以匹配专家输出的形状
-            index_r = topk_indices_r[:, i].unsqueeze(-1)
-            # 扩展索引以匹配专家输出的形状
-            index_z = topk_indices_z[:, i].unsqueeze(-1)
-            # 使用 gather 函数获取对应门控权重
-            weight_r = gate_weights_r.gather(1, index_r)
-            # 使用 gather 函数获取对应门控权重
-            weight_z = gate_weights_z.gather(1, index_z)
-            # 使用 gather 函数获取对应专家网络的输出并去除维度
-            output_r = torch.gather(torch.stack(expert_outputs_r, dim=1), 1, index_r.unsqueeze(-1)).squeeze(1)
-            # 使用 gather 函数获取对应专家网络的输出并去除维度
-            output_z = torch.gather(torch.stack(expert_outputs_z, dim=1), 1, index_z.unsqueeze(-1)).squeeze(1)
-            # 加权相加
-            final_output_r += weight_r * output_r
-            # 加权相加
-            final_output_z += weight_z * output_z
-        # 去除最后一个维度
-        final_output_r = final_output_r.squeeze(-1)
-        # 去除最后一个维度
-        final_output_z = final_output_z.squeeze(-1)
-        return final_output_r, final_output_z
+        if self.model_name == 'mcl':
+            # 通过局部头部
+            out_r, out_z = self.local_head(x)
+            final_output_r = self.fc2r(out_r)
+            final_output_z = self.fc2z(out_z)
+            # 去除最后一个维度
+            final_output_r = final_output_r.squeeze(-1)
+            # 去除最后一个维度
+            final_output_z = final_output_z.squeeze(-1)
+            balance_loss = 0
+        else:
+            out_r, out_z = self.local_head(x)
+            # 计算门控权重
+            # 通过门控网络并使用 softmax 函数计算权重
+            gate_weights_r = F.softmax(self.gate_r(out_r), dim=-1)
+            # 通过门控网络并使用 softmax 函数计算权重
+            gate_weights_z = F.softmax(self.gate_z(out_z), dim=-1)
+            
+            # 计算负载均衡损失
+            balance_loss_r = load_balancing_loss(self.gate_r(out_r), self.num_experts)
+            balance_loss_z = load_balancing_loss(self.gate_z(out_z), self.num_experts)
+            balance_loss = balance_loss_r + balance_loss_z
+            
+            # Top-K 选择
+            # 选择门控权重中前 k 大的索引
+            topk_indices_r = torch.topk(gate_weights_r, self.k, dim=-1).indices
+            # 选择门控权重中前 k 大的索引
+            topk_indices_z = torch.topk(gate_weights_z, self.k, dim=-1).indices
+            # 专家网络输出
+            # 计算每个专家网络的输出
+            expert_outputs_r = [expert(out_r) for expert in self.experts_r]
+            # 计算每个专家网络的输出
+            expert_outputs_z = [expert(out_z) for expert in self.experts_z]
+            # 组合专家输出
+            # 初始化最终输出为 0
+            final_output_r = 0
+            # 初始化最终输出为 0
+            final_output_z = 0
+            # 遍历前 k 个专家网络的索引
+            for i in range(self.k):
+                # 扩展索引以匹配专家输出的形状
+                index_r = topk_indices_r[:, i].unsqueeze(-1)
+                # 扩展索引以匹配专家输出的形状
+                index_z = topk_indices_z[:, i].unsqueeze(-1)
+                # 使用 gather 函数获取对应门控权重
+                weight_r = gate_weights_r.gather(1, index_r)
+                # 使用 gather 函数获取对应门控权重
+                weight_z = gate_weights_z.gather(1, index_z)
+                # 使用 gather 函数获取对应专家网络的输出并去除维度
+                output_r = torch.gather(torch.stack(expert_outputs_r, dim=1), 1, index_r.unsqueeze(-1)).squeeze(1)
+                # 使用 gather 函数获取对应专家网络的输出并去除维度
+                output_z = torch.gather(torch.stack(expert_outputs_z, dim=1), 1, index_z.unsqueeze(-1)).squeeze(1)
+                # 加权相加
+                final_output_r += weight_r * output_r
+                # 加权相加
+                final_output_z += weight_z * output_z
+            # 去除最后一个维度
+            final_output_r = final_output_r.squeeze(-1)
+            # 去除最后一个维度
+            final_output_z = final_output_z.squeeze(-1)
+        
+        return final_output_r, final_output_z, balance_loss
+
+class MultiFeatureLocalMOENetwork(nn.Module):
+    def __init__(self, feature_configs, channels=512, embd_dim=192, dropout_rate=0.3):
+        """
+        多特征MOE定位网络
+        
+        Args:
+            feature_configs: 特征配置列表，每个元素为字典，包含：
+                - name: 特征名称 ('GFCC', 'STFT', 'MEL', 'CQT', 'MFCC')
+                - input_size: 输入特征维度
+            channels: 卷积通道数
+            embd_dim: 嵌入维度
+            dropout_rate: Dropout比率
+        """
+        super().__init__()
+        self.num_features = len(feature_configs)
+        
+        # 为每个特征创建定位网络
+        self.feature_nets = nn.ModuleDict({
+            config['name']: local_head(config['input_size'], channels, embd_dim, model_name='mcl')
+            for config in feature_configs
+        })
+        
+        # 每个特征对应一个专家网络（r和z分别一个）
+        self.experts_r = nn.ModuleDict({
+            config['name']: nn.Sequential(
+                nn.Linear(embd_dim, embd_dim // 2),
+                nn.ReLU(),
+                nn.Dropout(dropout_rate),
+                nn.Linear(embd_dim // 2, 1)
+            ) for config in feature_configs
+        })
+        
+        self.experts_z = nn.ModuleDict({
+            config['name']: nn.Sequential(
+                nn.Linear(embd_dim, embd_dim // 2),
+                nn.ReLU(),
+                nn.Dropout(dropout_rate),
+                nn.Linear(embd_dim // 2, 1)
+            ) for config in feature_configs
+        })
+        
+        # 为r和z分别创建独立的路由器
+        self.router_r = nn.Sequential(
+            nn.Linear(embd_dim * self.num_features, self.num_features),
+            nn.Softmax(dim=-1)
+        )
+        
+        self.router_z = nn.Sequential(
+            nn.Linear(embd_dim * self.num_features, self.num_features),
+            nn.Softmax(dim=-1)
+        )
+        
+        # 为r和z分别添加温度参数
+        self.temperature_r = nn.Parameter(torch.ones(1) * 1.0)
+        self.temperature_z = nn.Parameter(torch.ones(1) * 1.0)
+        
+        # 添加L2正则化
+        self.l2_lambda = 0.01
+        
+    def forward(self, feature_dict):
+        """
+        前向传播
+        
+        Args:
+            feature_dict: 特征字典，键为特征名称，值为对应的特征张量
+        """
+        # 提取每个特征的特征向量
+        feature_embeddings_r = []
+        feature_embeddings_z = []
+        for name, net in self.feature_nets.items():
+            r, z = net(feature_dict[name])
+            feature_embeddings_r.append(r)
+            feature_embeddings_z.append(z)
+        
+        # 分别拼接r和z的特征向量
+        combined_features_r = torch.cat(feature_embeddings_r, dim=1)
+        combined_features_z = torch.cat(feature_embeddings_z, dim=1)
+        
+        # 分别计算r和z的权重
+        router_weights_r = self.router_r(combined_features_r)
+        router_weights_r = router_weights_r / self.temperature_r
+        
+        router_weights_z = self.router_z(combined_features_z)
+        router_weights_z = router_weights_z / self.temperature_z
+        
+        # 计算每个专家的输出
+        expert_outputs_r = []
+        expert_outputs_z = []
+        for name in self.experts_r.keys():
+            idx = list(self.experts_r.keys()).index(name)
+            expert_outputs_r.append(self.experts_r[name](feature_embeddings_r[idx]))
+            expert_outputs_z.append(self.experts_z[name](feature_embeddings_z[idx]))
+        
+        expert_outputs_r = torch.stack(expert_outputs_r, dim=1)
+        expert_outputs_z = torch.stack(expert_outputs_z, dim=1)
+        
+        # 分别使用加权平均
+        final_output_r = torch.sum(expert_outputs_r * router_weights_r.unsqueeze(-1), dim=1)
+        final_output_z = torch.sum(expert_outputs_z * router_weights_z.unsqueeze(-1), dim=1)
+        
+        # 分别计算r和z的负载均衡损失
+        balance_loss_r = load_balancing_loss(self.router_r(combined_features_r), self.num_features)
+        balance_loss_z = load_balancing_loss(self.router_z(combined_features_z), self.num_features)
+        balance_loss = balance_loss_r + balance_loss_z
+        
+        return final_output_r.squeeze(-1), final_output_z.squeeze(-1), balance_loss
 
 if __name__ == '__main__':
-    # 初始化模型，指定输入大小、通道数和嵌入维度
-    model = local_network(input_size=201, channels=512, embd_dim=192)
-    # 生成随机输入数据，模拟输入
-    input_tensor = torch.randn(64, 201, 512)
-    # 进行前向传播
-    output_r, output_z = model(input_tensor)
-    # 打印输出结果的形状
-    print("Output shape:", output_r.shape)
-
+    # 测试参数
+    input_size = 201
+    channels = 512
+    embd_dim = 192
+    num_experts = 5
+    k = 3
+    
+    # 创建模型实例
+    model = local_network(input_size, channels, embd_dim, num_experts, k)
+    
+    # 生成随机输入数据
+    batch_size = 64
+    input_tensor = torch.randn(batch_size, input_size, 512)
+    
+    # 前向传播
+    output_r, output_z, balance_loss = model(input_tensor)
+    
+    # 打印输出形状和负载均衡损失
+    print(f"Output r shape: {output_r.shape}")
+    print(f"Output z shape: {output_z.shape}")
+    print(f"Load balancing loss: {balance_loss.item()}")
+    
+    # 测试多特征MOE定位网络
+    feature_configs = [
+        {'name': 'GFCC', 'input_size': 80},
+        {'name': 'STFT', 'input_size': 128}
+    ]
+    
+    input_tensor = {
+        'GFCC': torch.randn(batch_size, 80, 512),
+        'STFT': torch.randn(batch_size, 128, 512)
+    }
+    
+    multi_feature_model = MultiFeatureLocalMOENetwork(
+        feature_configs=feature_configs,
+        channels=channels,
+        embd_dim=embd_dim
+    )
+    
+    # 前向传播
+    output_r, output_z, balance_loss = multi_feature_model(input_tensor)
+    
+    # 打印输出形状和负载均衡损失
+    print("\nMulti-feature MOE Local Network:")
+    print(f"Output r shape: {output_r.shape}")
+    print(f"Output z shape: {output_z.shape}")
+    print(f"Load balancing loss: {balance_loss.item()}") 

@@ -8,9 +8,7 @@
 ```
 project/
 │
-├── nw_class.py         # 分类网络模型定义
 ├── nw_class_moe.py     # 带有MoE结构的分类网络模型定义
-├── nw_local.py         # 定位网络模型定义
 ├── nw_local_moe.py     # 带有MoE结构的定位网络模型定义
 ├── nw_mtl.py           # 多任务学习模型定义
 ├── md_moe_rl.py        # 音频数据处理及数据集构建
@@ -18,6 +16,17 @@ project/
 ├── pltpdf.py           # 训练过程数据可视化
 ├── requirements.txt    # 项目依赖库列表
 └── README.md           # 项目说明文档
+
+├── analyze_plt/        # 模型性能分析和可视化脚本
+│   ├── analyze_localization.py         # 定位性能分析和可视化
+│   ├── analyze_training_time.py        # 训练时间分析和可视化
+│   ├── plot_params_vs_acc.py           # 模型参数量与准确率关系可视化
+│   ├── plot_train_params.py            # 训练参数可视化
+│   ├── plot_training_cost_vs_acc.py    # 训练成本与准确率关系可视化
+│   ├── print_network_size.py           # 网络模型大小计算
+│   ├── params.csv                      # 模型参数量和准确率数据
+│   └── train_time2.csv                 # 训练时间数据
+│
 ├── data_gen/           # 水下声信道数据生成相关文件
 │   ├── dataOcnMptEhc_Pos.m     # 海洋声信道数据生成主流程
 │   ├── Pos1Azi1freq100Hz.env   # BELLHOP相关的环境参数文件
@@ -32,6 +41,7 @@ project/
 │   ├── funOME.m                # 海洋环境多径效应建模函数
 │   ├── funReadTestLb.m         # 读取测试标签文本文件
 │   ├── help.md                 # 包含导出Conda环境依赖等帮助信息
+│   ├── kfoldDataSplit.m        # K折交叉验证数据分割
 │   ├── natsort.m               # 对文本数组进行自然排序
 │   ├── natsortfiles.m          # 对文件名或文件夹名进行自然排序
 │   └── read_arrivals_bin.m     # 读取BELLHOP生成的二进制格式的到达数据文件

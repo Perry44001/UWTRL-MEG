@@ -34,6 +34,7 @@ project/
 ├── pltpdf.py           # 训练过程数据可视化
 ├── requirements.txt    # 项目依赖库列表
 └── README.md           # 项目说明文档
+├── train.bat           # 训练脚本，用于批量实验
 
 ├── analyze_plt/        # 模型性能分析和可视化脚本
 │   ├── analyze_localization.py         # 定位性能分析和可视化

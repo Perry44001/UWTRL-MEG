@@ -24,6 +24,16 @@ from sklearn.preprocessing import label_binarize
 plt.rcParams['font.family'] = 'Times New Roman'
 plt.rcParams.update({'font.size': 24})
 
+# 不存在log文件夹则创建
+if not os.path.exists('log'):
+    os.makedirs('log')
+# 不存在models文件夹则创建
+if not os.path.exists('models'):
+    os.makedirs('models')
+# 不存在output文件夹则创建
+if not os.path.exists('output'):
+    os.makedirs('output')
+
 # 读取 JSON 文件
 def read_json_file(file_path):
     """

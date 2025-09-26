@@ -1,0 +1,8 @@
+output/
+loc/
+models/
+log/
+__pycache__/
+train_list.txt
+test_list.txt
+label_list.txt

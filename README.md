@@ -1,8 +1,26 @@
 # 水下目标识别（声纹识别）项目
 本项目聚焦于水下目标识别领域，利用声纹识别技术实现对水下目标的分类与定位。通过精心设计的模型架构、数据处理流程和训练策略，旨在提高水下目标识别的准确率和效率。
+论文已经在MDPI期刊《Remote Sensing》上发表，详细信息请参考：[https://www.mdpi.com/3465976](https://www.mdpi.com/3465976)
 
 ## 一、项目概述
 项目核心是基于深度学习的水下目标识别系统，主要包含数据处理、模型构建、训练与评估等模块。数据处理部分负责从音频文件中提取梅尔频谱、韦尔奇功率谱和平均幅度谱等声学特征，并构建数据集；模型构建涵盖多个神经网络模型，如用于分类的`class_network`、用于定位的`local_network`以及结合两者的多任务模型`MultiTaskLossWrapper`；训练与评估模块则运用优化算法和评估指标，对模型进行训练和性能评估。
+
+引用
+Cite
+```text
+Export citation file: BibTeX | EndNote | RIS
+MDPI and ACS Style
+Qian, P.; Wang, J.; Liu, Y.; Chen, Y.; Wang, P.; Deng, Y.; Xiao, P.; Li, Z. Multi-Task Mixture-of-Experts Model for Underwater Target Localization and Recognition. Remote Sens. 2025, 17, 2961. https://doi.org/10.3390/rs17172961
+
+AMA Style
+Qian P, Wang J, Liu Y, Chen Y, Wang P, Deng Y, Xiao P, Li Z. Multi-Task Mixture-of-Experts Model for Underwater Target Localization and Recognition. Remote Sensing. 2025; 17(17):2961. https://doi.org/10.3390/rs17172961
+
+Chicago/Turabian Style
+Qian, Peng, Jingyi Wang, Yining Liu, Yingxuan Chen, Pengjiu Wang, Yanfa Deng, Peng Xiao, and Zhenglin Li. 2025. "Multi-Task Mixture-of-Experts Model for Underwater Target Localization and Recognition" Remote Sensing 17, no. 17: 2961. https://doi.org/10.3390/rs17172961
+
+APA Style
+Qian, P., Wang, J., Liu, Y., Chen, Y., Wang, P., Deng, Y., Xiao, P., & Li, Z. (2025). Multi-Task Mixture-of-Experts Model for Underwater Target Localization and Recognition. Remote Sensing, 17(17), 2961. https://doi.org/10.3390/rs17172961
+```
 
 ## 二、项目结构
 ```
@@ -88,17 +106,22 @@ https://www.doubao.com/drive/s/4914e4ad2b3ec87a
 ## 五、模型训练
 在项目根目录下，使用以下命令进行模型训练：
 ```bash
-python train_mtl.py --num_epoch [训练轮数] --train_list_path [训练数据列表路径] --test_list_path [测试数据列表路径] --label_list_path [标签列表路径] --num_classes [类别数] --batch_size [训练批次大小] --test_batch [测试批次大小] --lr [学习率] --weight-decay [权重衰减系数]
+python train_mtl.py --model [模型名称] --feature [特征名称] --task_type [任务类型] --num_epoch [训练轮数] --train_list_path [训练数据列表路径] --test_list_path [测试数据列表路径] --label_list_path [标签列表路径] --num_classes [类别数] --batch_size [训练批次大小] --test_batch [测试批次大小] --lr [学习率] --weight-decay [权重衰减系数]
 ```
 例如：
 ```bash
-python train_mtl.py --num_epoch 150 --train_list_path train_list.txt --test_list_path test_list.txt --label_list_path label_list.txt --num_classes 5 --batch_size 64 --test_batch 64 --lr 0.001 --weight-decay 5e-4
+python train_mtl.py --model meg --feature stft --task_type mtl --num_epoch 150 --train_list_path pathtoyourdataset/train_list.txt --test_list_path pathtoyourdataset/test_list.txt --label_list_path pathtoyourdataset/label_list.txt --num_classes 5 --batch_size 64 --test_batch 64 --lr 0.001 --weight-decay 5e-4
 ```
+
 参数说明：
 - `--num_epoch`：训练轮数，默认150。
-- `--train_list_path`：训练数据列表路径。
-- `--test_list_path`：测试数据列表路径。
-- `--label_list_path`：标签列表路径。
+- `--model`：模型名称，可选`meg`、`mcl`、`swin`、`meg_blc`、`meg_mix`、`resnet18`、`resnet50`、`convnext`、`vgg16`、`vgg19`、
+                                 `mobilenetv2`、`densenet121`、`swin`，默认`meg`。
+- `--feature`：特征名称，可选`stft`、`mel`、`cqt`、`mfcc`、`gfcc`，默认`stft`。
+- `--task_type`：任务类型，可选`mtl`、`classification`、`localization`，默认`mtl`。
+- `--train_list_path`：训练数据列表路径，指向包含训练数据的文本文件，每行格式为`音频文件路径\t标签\t距离\t深度`。
+- `--test_list_path`：测试数据列表路径，指向包含测试数据的文本文件，格式与训练数据列表相同。
+- `--label_list_path`：标签列表路径，指向包含类别标签的文本文件，每行一个标签。
 - `--num_classes`：分类类别数。
 - `--batch_size`：训练批次大小，默认64。
 - `--test_batch`：测试批次大小，默认64。

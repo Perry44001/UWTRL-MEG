@@ -4,10 +4,8 @@
 
 # 水下目标识别（声纹识别）项目
 本项目聚焦于水下目标识别领域，利用声纹识别技术实现对水下目标的分类与定位。通过精心设计的模型架构、数据处理流程和训练策略，旨在提高水下目标识别的准确率和效率。
-论文已经在MDPI期刊《Remote Sensing》上发表，详细信息请参考：[https://www.mdpi.com/3465976](https://www.mdpi.com/3465976)
 
-## 一、项目概述
-项目核心是基于深度学习的水下目标识别系统，主要包含数据处理、模型构建、训练与评估等模块。数据处理部分负责从音频文件中提取梅尔频谱、韦尔奇功率谱和平均幅度谱等声学特征，并构建数据集；模型构建涵盖多个神经网络模型，如用于分类的`class_network`、用于定位的`local_network`以及结合两者的多任务模型`MultiTaskLossWrapper`；训练与评估模块则运用优化算法和评估指标，对模型进行训练和性能评估。
+论文已经在MDPI期刊《Remote Sensing》上发表，详细信息请参考：[https://www.mdpi.com/3465976](https://www.mdpi.com/3465976)
 
 引用
 Cite
@@ -36,6 +34,11 @@ Qian, P., Wang, J., Liu, Y., Chen, Y., Wang, P., Deng, Y., Xiao, P., & Li, Z. (2
 3. 训练权重文件下载
 主链接：https://modelscope.cn/models/qianpeng897/UWTRL-MEG
 或 备用链接：https://huggingface.co/peng7554/UWTRL-MEG
+
+
+## 一、项目概述
+项目核心是基于深度学习的水下目标识别系统，主要包含数据处理、模型构建、训练与评估等模块。数据处理部分负责从音频文件中提取梅尔谱、短时傅里叶变换等特征，并构建数据集；模型构建涵盖多个神经网络模型，如用于分类的`class_network`、用于定位的`local_network`以及结合两者的多任务模型`MultiTaskLossWrapper`；训练与评估模块则运用优化算法和评估指标，对模型进行训练和性能评估。
+
 
 ## 二、项目结构
 ```

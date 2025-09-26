@@ -7,20 +7,31 @@
 
 引用
 Cite
-```text
-Export citation file: BibTeX | EndNote | RIS
-MDPI and ACS Style
+```md
+# MDPI and ACS Style
 Qian, P.; Wang, J.; Liu, Y.; Chen, Y.; Wang, P.; Deng, Y.; Xiao, P.; Li, Z. Multi-Task Mixture-of-Experts Model for Underwater Target Localization and Recognition. Remote Sens. 2025, 17, 2961. https://doi.org/10.3390/rs17172961
 
-AMA Style
+# AMA Style
 Qian P, Wang J, Liu Y, Chen Y, Wang P, Deng Y, Xiao P, Li Z. Multi-Task Mixture-of-Experts Model for Underwater Target Localization and Recognition. Remote Sensing. 2025; 17(17):2961. https://doi.org/10.3390/rs17172961
 
-Chicago/Turabian Style
+#Chicago/Turabian Style
 Qian, Peng, Jingyi Wang, Yining Liu, Yingxuan Chen, Pengjiu Wang, Yanfa Deng, Peng Xiao, and Zhenglin Li. 2025. "Multi-Task Mixture-of-Experts Model for Underwater Target Localization and Recognition" Remote Sensing 17, no. 17: 2961. https://doi.org/10.3390/rs17172961
 
-APA Style
+# APA Style
 Qian, P., Wang, J., Liu, Y., Chen, Y., Wang, P., Deng, Y., Xiao, P., & Li, Z. (2025). Multi-Task Mixture-of-Experts Model for Underwater Target Localization and Recognition. Remote Sensing, 17(17), 2961. https://doi.org/10.3390/rs17172961
 ```
+
+数据集、网络代码及训练权重文件获取方式
+以下是水下声学目标辐射噪声相关数据集、网络代码及训练权重文件的下载链接（访问时间均为 2025 年 8 月 24 日），若某一链接无法访问，可使用 “或” 之后提供的备用链接 —— 该备用链接已验证无地域访问限制。
+1. 数据集下载
+主链接：https://modelscope.cn/datasets/qianpeng897/DS3500
+或 备用链接：https://huggingface.co/datasets/peng7554/DS3500
+2. 网络代码获取
+主链接：https://gitee.com/open-ocean/UWTRL-MEG
+或 备用链接：https://github.com/Perry44001/UWTRL-MEG
+3. 训练权重文件下载
+主链接：https://modelscope.cn/models/qianpeng897/UWTRL-MEG
+或 备用链接：https://huggingface.co/peng7554/UWTRL-MEG
 
 ## 二、项目结构
 ```

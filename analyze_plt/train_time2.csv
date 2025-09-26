@@ -1,0 +1,8 @@
+﻿Model,ACC(%),MAE-R(km),MAE-Z(m),Training cost(min)
+MEG (STFT),95.76%,0.2222,24.09,22
+MEG (GFCC),95.30%,0.1826,17.82,10
+DenseNet121,86.83%,-,-,43
+ResNet18,82.81%,-,-,17
+MobileNetV2,81.25%,-,-,21
+ResNet50,77.68%,-,-,32
+Swin-Transformer,62.79%,-,-,54

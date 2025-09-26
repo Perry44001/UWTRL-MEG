@@ -7,13 +7,18 @@ import numpy as np
 import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+from sklearn.metrics import roc_curve, auc
+from itertools import cycle
 
 from nw_mtl import MultiTaskLossWrapper
+# from nw_mtl_cl import MultiTaskLossWrapper
 from md_moe_rl import Dataset_audio
 import time
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
+from sklearn.preprocessing import label_binarize
+
 
 # 设置全局字体为 Times New Roman，字体大小为 24
 plt.rcParams['font.family'] = 'Times New Roman'
@@ -116,6 +121,44 @@ def plot_confusion_matrix_jy(cm, save_path, class_labels, title='Confusion Matri
 
     plt.close('all')
 
+def plot_roc_curves(y_true, y_score, class_labels, save_path):
+    """绘制ROC曲线"""
+    plt.figure(figsize=(9, 8), dpi=300)
+    
+    # 计算每个类别的ROC曲线和AUC
+    fpr = dict()
+    tpr = dict()
+    roc_auc = dict()
+    
+    # 将标签转换为one-hot编码
+    n_classes = len(class_labels)
+    y_true_bin = label_binarize(y_true, classes=range(n_classes))
+    # print(y_true_bin)
+    # print(y_score)
+    
+    for i in range(n_classes):
+        # print(i)
+        fpr[i], tpr[i], _ = roc_curve(y_true_bin[:, i], y_score[:, i])
+        roc_auc[i] = auc(fpr[i], tpr[i])
+        # print(roc_auc[i])
+    
+    # 绘制所有类别的ROC曲线
+    colors = cycle(['blue', 'red', 'green', 'yellow', 'purple'])
+    for i, color in zip(range(n_classes), colors):
+        plt.plot(fpr[i], tpr[i], color=color, lw=2,
+                label=f'ROC curve of class {class_labels[i]} (AUC = {roc_auc[i]:.4f})')
+    
+    plt.plot([0, 1], [0, 1], 'k--', lw=2)
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic (ROC) Curves')
+    plt.legend(loc="lower right")
+    plt.tight_layout()
+    plt.savefig(save_path, format='pdf', bbox_inches='tight')
+    plt.close()
+
 def get_args():
     """
     解析命令行参数并返回参数对象。
@@ -128,6 +171,9 @@ def get_args():
     parser.add_argument('-classes', '--num_classes', default='5', type=int)
     parser.add_argument('-workers', '--num_workers', default=0, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
+    # 新增特征选择参数
+    parser.add_argument('--features', nargs='+', default=['stft'],
+                        help='List of features to use: mel, welch, avg, gfcc, stft, cqt')
     parser.add_argument("--save_model", type=str, default='models/')
     parser.add_argument("--train_list_path", type=str, default='E:/MTQP/wjy_codes/shipsear_5s_16k_ocnwav_Pos/train_list.txt')
     parser.add_argument("--test_list_path", type=str, default='E:/MTQP/wjy_codes/shipsear_5s_16k_ocnwav_Pos/test_list.txt')
@@ -157,6 +203,16 @@ def get_args():
     # Device options
     parser.add_argument('--gpu-id', default='1', type=str,
                         help='id(s) for CUDA_VISIBLE_DEVICES')
+    
+    # 新增模型选择参数
+    parser.add_argument('--model', type=str, default='meg',
+                        choices=['meg', 'mcl', 'meg_blc', 'meg_mix', 'resnet18', 'resnet50', 'convnext', 'vgg16', 'vgg19',
+                                 'mobilenetv2', 'densenet121', 'swin', 'new'],
+                        help='选择骨干网络架构')
+    # 新增任务类型参数
+    parser.add_argument('--task_type', type=str, default='mtl',
+                        choices=['mtl', 'classification', 'localization'],
+                        help='选择任务类型：多任务、分类任务或定位任务')
 
     args = parser.parse_args()
 
@@ -172,7 +228,7 @@ best_acc = 0
 
 # 评估模型
 @torch.no_grad()
-def test(model, test_loader, device, cfmatrix_logdir, class_labels, epoch, Rrmax, Szmax):
+def test(model, test_loader, device, cfmatrix_logdir, class_labels, epoch, Rrmax, Szmax, args):
     """
     模型评估函数 | Model evaluation function
     
@@ -197,24 +253,23 @@ def test(model, test_loader, device, cfmatrix_logdir, class_labels, epoch, Rrmax
         sklearn_f1: sklearn计算F1分数 | sklearn calculated F1 score
         ABSE_Rs_test: 距离平均绝对误差 | Mean absolute error of distance
         ABSE_Ds_test: 深度平均绝对误差 | Mean absolute error of depth
+        all_scores: 所有预测分数 | All predicted scores
     """
     model.eval()
-    accuracies, preds, labels, ABSE_Rs, ABSE_Ds = [], [], [], [], []
+    accuracies, preds, labels, ABSE_Rs, ABSE_Ds, all_scores = [], [], [], [], [], []
     loss_val_sum = []
     correct_perclass = list(0. for i in range(args.num_classes))
     total_perclass = list(0. for i in range(args.num_classes))
     with torch.no_grad():
-        for batch_id, (inputs, inputs_w, inputs_a, label, Rr, Sz) in enumerate(test_loader):
-            inputs = inputs.to(device)
-            inputs_w = inputs_w.to(device)
-            inputs_a = inputs_a.to(device)
+        for batch_id, (inputs_dict, label, Rr, Sz) in enumerate(test_loader):
+            # 将特征字典中的所有特征移动到设备上
+            inputs_dict = {k: v.to(device) for k, v in inputs_dict.items()}
             label = label.to(device).long()
             Rr = Rr.to(device, dtype=torch.float64)
             Sz = Sz.to(device, dtype=torch.float64)
             Rr = Rr / Rrmax
             Sz = Sz / Szmax
-            los_val, output, outtaskLocR, outtaskLocD, prec = model(inputs, inputs_w, inputs_a, label, Rr, Sz)
-            # los_val = loss_count(output, outtaskLocR, outtaskLocD, label, Rr, Sz)
+            los_val, output, outtaskLocR, outtaskLocD, prec = model(inputs_dict, label, Rr, Sz)
 
             prediction = torch.argmax(output, 1)
             res = prediction == label
@@ -247,6 +302,8 @@ def test(model, test_loader, device, cfmatrix_logdir, class_labels, epoch, Rrmax
             ABSE_D = np.mean(np.abs(outtaskLocD - Sz))
             ABSE_Ds.append(ABSE_D)
 
+            all_scores.extend(output)
+
         sklearn_accuracy = accuracy_score(labels, preds)
         sklearn_precision = precision_score(labels, preds, average='weighted')
         sklearn_recall = recall_score(labels, preds, average='weighted')
@@ -271,12 +328,20 @@ def test(model, test_loader, device, cfmatrix_logdir, class_labels, epoch, Rrmax
     cm = confusion_matrix(labels, preds)
 
     print('=' * 70)
+    with open(args.log_file, 'a+') as fp:
+        fp.write(f'[{datetime.now()}] Test {epoch}, loss: {loss_val:.4f}, accuracy: {acc_val:.4f}, ABSE_R: {ABSE_R_val:.4f}, ABSE_D: {ABSE_D_val:.4f}\n')
     print(f'[{datetime.now()}] Test {epoch}, loss: {loss_val:.4f}, accuracy: {acc_val:.4f}, ABSE_R: {ABSE_R_val:.4f}, ABSE_D: {ABSE_D_val:.4f}')
     print('=' * 70)
 
-    return acc_val, cm, loss_val, acc_str, sklearn_accuracy, sklearn_precision, sklearn_recall, sklearn_f1, ABSE_Rs_test, ABSE_Ds_test
+    # 绘制ROC曲线
+    all_scores = np.array(all_scores)
 
-def train(model, train_loader, device, optimizer, scheduler, epoch, Rrmax, Szmax):
+    if epoch == args.num_epoch - 1 or args.evaluate:
+        plot_roc_curves(labels, all_scores, class_labels, os.path.join(cfmatrix_logdir, f'roc_curves_{epoch}.pdf'))
+
+    return acc_val, cm, loss_val, acc_str, sklearn_accuracy, sklearn_precision, sklearn_recall, sklearn_f1, ABSE_Rs_test, ABSE_Ds_test, all_scores
+
+def train(model, train_loader, device, optimizer, scheduler, epoch, Rrmax, Szmax, args):
     """
     模型训练函数 | Model training function
     
@@ -312,19 +377,16 @@ def train(model, train_loader, device, optimizer, scheduler, epoch, Rrmax, Szmax
 
     correct_perclass = list(0. for i in range(args.num_classes))
     total_perclass = list(0. for i in range(args.num_classes))
-    for batch_id, (inputs, inputs_w, inputs_a, label, Rr, Sz) in enumerate(train_loader):
-        # 打印inputs的形状
-        # print(f"inputs shape: {inputs.shape}")
-        inputs = inputs.to(device)
-        inputs_w = inputs_w.to(device)
-        inputs_a = inputs_a.to(device)
+    for batch_id, (inputs_dict, label, Rr, Sz) in enumerate(train_loader):
+        # 将特征字典中的所有特征移动到设备上
+        inputs_dict = {k: v.to(device) for k, v in inputs_dict.items()}
         label = label.to(device).long()
         Rr = Rr.to(device, dtype=torch.float64)
         Sz = Sz.to(device, dtype=torch.float64)
         Rr = Rr / Rrmax
         Sz = Sz / Szmax
-        # print("Rr, Sz: ", Rr, Sz)
-        los, output, outtaskLocR, outtaskLocD, prec = model(inputs, inputs_w, inputs_a, label, Rr, Sz)
+        
+        los, output, outtaskLocR, outtaskLocD, prec = model(inputs_dict, label, Rr, Sz)
         # prec从device转移到cpu，并从tensor转为numpy数组
         prec = prec.cpu()
         prec_rc = prec[0]
@@ -335,7 +397,6 @@ def train(model, train_loader, device, optimizer, scheduler, epoch, Rrmax, Szmax
         pres_lz_list.append(prec_lz)
 
         # 计算损失值
-        # los = loss_count(output, outtaskLocR, outtaskLocD, label, Rr, Sz)
         optimizer.zero_grad()
         los.backward()
         optimizer.step()
@@ -372,14 +433,22 @@ def train(model, train_loader, device, optimizer, scheduler, epoch, Rrmax, Szmax
     acc_str = sum(correct_perclass) / sum(total_perclass)
 
     print(f'[{datetime.now()}] Train epoch [{epoch}/{args.num_epoch}], '
-          # f'lr: {scheduler.get_last_lr()[0]:.8f}, loss: {sum(loss_sum) / len(loss_sum):.8f}, '
-          f'lr: {args.lr:.8f}, loss: {sum(loss_sum) / len(loss_sum):.3f}, '
-          f'pres_rc: {sum(pres_rc_list) / len(pres_rc_list):.3f}, '
-          f'pres_lr: {sum(pres_lr_list) / len(pres_lr_list):.3f}, '
-          f'pres_lz: {sum(pres_lz_list) / len(pres_lz_list):.3f}, '
-          f'accuracy: {sum(accuracies) / len(accuracies):.5f}, '
-          f'ABSE_R: {sum(ABSE_Rs) / len(ABSE_Rs):.5f}, '
-          f'ABSE_D: {sum(ABSE_Ds) / len(ABSE_Ds):.5f}')
+          f'lr: {args.lr:.8f}, loss: {sum(loss_sum)/len(loss_sum):.3f}, '
+          f'pres_rc: {sum(pres_rc_list)/len(pres_rc_list):.3f}, '
+          f'pres_lr: {sum(pres_lr_list)/len(pres_lr_list):.3f}, '
+          f'pres_lz: {sum(pres_lz_list)/len(pres_lz_list):.3f}, '
+          f'accuracy: {sum(accuracies)/len(accuracies):.5f}, '
+          f'ABSE_R: {sum(ABSE_Rs)/len(ABSE_Rs):.5f}, '
+          f'ABSE_D: {sum(ABSE_Ds)/len(ABSE_Ds):.5f}')
+    with open(args.log_file, 'a+') as fp:
+        fp.write(f'[{datetime.now()}] Train epoch [{epoch}/{args.num_epoch}] '
+          f'lr: {args.lr:.8f}, loss: {sum(loss_sum)/len(loss_sum):.3f}, '
+          f'pres_rc: {sum(pres_rc_list)/len(pres_rc_list):.3f}, '
+          f'pres_lr: {sum(pres_lr_list)/len(pres_lr_list):.3f}, '
+          f'pres_lz: {sum(pres_lz_list)/len(pres_lz_list):.3f}, '
+          f'accuracy: {sum(accuracies)/len(accuracies):.5f}, '
+          f'ABSE_R: {sum(ABSE_Rs)/len(ABSE_Rs):.5f}, '
+          f'ABSE_D: {sum(ABSE_Ds)/len(ABSE_Ds):.5f}\n')
     pres_rc_train = float(sum(pres_rc_list) / len(pres_rc_list))
     pres_lr_train = float(sum(pres_lr_list) / len(pres_lr_list))
     pres_lz_train = float(sum(pres_lz_list) / len(pres_lz_list))
@@ -399,11 +468,12 @@ def run(args):
     """
     global best_acc
 
-    train_dataset = Dataset_audio(args.train_list_path, sr=16000, chunk_duration=5)
-    train_loader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+    # 修改数据集初始化，传入特征参数
+    train_dataset = Dataset_audio(args.train_list_path, sr=16000, chunk_duration=5, features=args.features)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True)
     
-    test_dataset = Dataset_audio(args.test_list_path, sr=16000, chunk_duration=5)
-    test_loader = DataLoader(dataset=test_dataset, batch_size=args.batch_size, num_workers=args.num_workers)
+    test_dataset = Dataset_audio(args.test_list_path, sr=16000, chunk_duration=5, features=args.features)
+    test_loader = DataLoader(dataset=test_dataset, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
 
     folder_path = os.path.dirname(args.train_list_path)
     json_path = os.path.join(folder_path, 'config.json')
@@ -416,11 +486,26 @@ def run(args):
 
     with open(args.label_list_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
-        class_labels = [l.replace('\n', '') for l in lines]  # ['fold1', 'fold10', 'fold2', 'fold3', 'fold4', 'fold5', 'fold6', 'fold7', 'fold8', 'fold9']
+        class_labels = [l.replace('\n', '') for l in lines] 
 
     device = torch.device("cuda")
 
-    model = MultiTaskLossWrapper(input_size=200, channels=512, embd_dim=192, num_classes=args.num_classes)
+    # 根据特征类型动态设置输入维度
+    feature_dim = {'mel': 200, 'stft': 513, 'cqt': 84, 'gfcc': 200, 'mfcc': 40}
+
+
+    model = MultiTaskLossWrapper(
+        model_name=args.model,
+        feature_dim=feature_dim,
+        channels=512,
+        embd_dim=192,
+        num_classes=5,
+        num_experts=5,
+        k=3,
+        task_type=args.task_type,
+        features=args.features
+    )
+
     model.to(device)
 
     # 获取优化方法
@@ -448,7 +533,7 @@ def run(args):
 
     if args.evaluate:
         print('\nEvaluation only')
-        acc_val, cm, loss_val, acc_str_val, skl_acc_val, skl_precision_val, skl_recall_val, skl_f1_val = test(model, test_loader, device, confusion_matrix_logdir, class_labels, epoch)
+        acc_val, cm, loss_val, acc_str_val, skl_acc_val, skl_precision_val, skl_recall_val, skl_f1_val, ABSE_Rs_val, ABSE_Ds_val, all_scores = test(model, test_loader, device, confusion_matrix_logdir, class_labels, epoch, Rrmax, Szmax, args)
         print(' Test Loss:  %.8f, Test Acc:  %.2f' % (loss_val, acc_val))
         return
 
@@ -469,7 +554,7 @@ def run(args):
     # 开始训练
     for epoch in range(args.num_epoch):
         # 训练模型
-        acc_train, loss_train, acc_str_train, pres_rc_train, pres_lr_train, pres_lz_train, ABSE_Rs_train, ABSE_Ds_train = train(model, train_loader, device, optimizer, scheduler, epoch, Rrmax, Szmax)
+        acc_train, loss_train, acc_str_train, pres_rc_train, pres_lr_train, pres_lz_train, ABSE_Rs_train, ABSE_Ds_train = train(model, train_loader, device, optimizer, scheduler, epoch, Rrmax, Szmax, args)
         acc_str_train_list.append(acc_str_train * 100)
         acc_train_list.append(acc_train * 100)
         loss_train_list.append(loss_train)
@@ -480,7 +565,7 @@ def run(args):
         ABSE_Ds_train_list.append(ABSE_Ds_train)
 
         # 评估模型
-        acc_val, cm, loss_val, acc_str_val, skl_acc_val, skl_precision_val, skl_recall_val, skl_f1_val, ABSE_Rs_val, ABSE_Ds_val = test(model, test_loader, device, confusion_matrix_logdir, class_labels, epoch, Rrmax, Szmax)
+        acc_val, cm, loss_val, acc_str_val, skl_acc_val, skl_precision_val, skl_recall_val, skl_f1_val, ABSE_Rs_val, ABSE_Ds_val, all_scores = test(model, test_loader, device, confusion_matrix_logdir, class_labels, epoch, Rrmax, Szmax, args)
         # 新增：记录测试指标
         acc_val_list.append(acc_val * 100)
         ABSE_Rs_val_list.append(ABSE_Rs_val)

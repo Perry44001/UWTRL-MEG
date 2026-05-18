@@ -98,10 +98,8 @@ pip install -r requirements.txt
 4. 配置文件`config.json`需包含`Rrmax`和`Szmax`两个字段，分别用于距离和深度的归一化。
 
 下载开源的数据集
-原始的shipsear 16k 采样 5s 分割数据
-https://www.doubao.com/drive/s/8623c37953c6a3d6
-经过海洋声信道处理的shipsear 16k 采样 5s 分割数据
-https://www.doubao.com/drive/s/4914e4ad2b3ec87a
+原始的shipsear 16k 采样 5s 分割数据以及经过海洋声信道处理的shipsear 16k 采样 5s 分割数据
+https://huggingface.co/datasets/peng7554/DS3500/tree/main
 
 ### 使用 Matlab 脚本一键生成数据集
 #### 1. 代码概述
